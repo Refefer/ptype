@@ -5,43 +5,33 @@ from generics import GenericType, is_generic
 
 class Function(object):
 
-    def __init__(self, types, ret, f, is_method=False):
+    def __init__(self, types, ret, f, allow_splats=False):
         assert isinstance(types, tuple)
         assert all(isinstance(t, type) for t in types)
         assert isinstance(ret, type)
-        if __debug__:
-            argsN = f.func_code.co_argcount
-            print len(types), argsN
-            # Ignore self/cls
-            if is_method:
-                assert  argsN == (len(types) + 1)
-            else:
-                assert argsN == len(types)
+        if not allow_splats:
+            assert f.func_code.co_argcount == len(types)
 
-        self.method = is_method
         self.types = types 
         self.generics = list({t for ts in (types, (ret,)) 
             for t in ts if is_generic(t)})
 
         self.polymorphic = len(self.generics) > 0
-        self.cardinality = len(types) + 1 if is_method else len(types)
+        self.cardinality = len(types)
         self.ret = ret
         self.f = f
 
     def __call__(self, *args):
 
-        # Handle methods
-        types = self.types if not self.method else (object,) + self.types 
         if __debug__:
-            print len(args), self.cardinality
             assert len(args) == self.cardinality
 
         # Generic?  Gotta build a fully formed function
         if self.polymorphic:
-            return self._callGeneric(types, args)
+            return self._callGeneric(args)
         
         if __debug__:
-            for p, t in izip(args, types):
+            for p, t in izip(args, self.types):
                 assert isinstance(p, t), \
                     "%s: Expected %s, got %s" % (
                         self.f.__name__, t.__name__, type(p).__name__
@@ -56,8 +46,16 @@ class Function(object):
                                              
         return ret
 
-    def _callGeneric(self, types, args):
-        gs = [type(t) for T, t in izip(types, args) if is_generic(T)]
+    def __get__(self, inst, cls):
+        if inst is None: return self
+
+        _self = self
+        f = partial(self, inst)
+        f.__name__ = self.f.__name__
+        return Function(tuple(self.types[1:]), self.ret, f, allow_splats=True)
+
+    def _callGeneric(self, args):
+        gs = [type(t) for T, t in izip(self.types, args) if is_generic(T)]
         new_f = self[tuple(gs)]
         # Return type _must_ be known at call time
         assert not is_generic(new_f.ret)
@@ -76,7 +74,7 @@ class Function(object):
         # Resolve return type, if we can
         ret = gen_map[self.ret] if is_generic(self.ret) else self.ret
 
-        return Function(tuple(new_types), ret, self.f, is_method=self.method)
+        return Function(tuple(new_types), ret, self.f)
 
     def andThen(self, func):
         assert isinstance(func, Function)
@@ -125,19 +123,10 @@ class Function(object):
 def F0(ret):
     return partial(Function, (), ret)
 
-def F0M(ret):
-    return partial(Function, (), ret, is_method=True)
-
 def FUnit(*types):
     return partial(Function, types, NoneType)
-
-def FUnitM(*types):
-    return partial(Function, types, NoneType, is_method=True)
 
 def Func(*types):
     assert len(types) > 0
     return partial(Function, tuple(types[:-1]), types[-1])
 
-def Method(*types):
-    assert len(types) > 0
-    return partial(Function, tuple(types[:-1]), types[-1], is_method=True)
