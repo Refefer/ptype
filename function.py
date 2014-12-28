@@ -120,6 +120,17 @@ class Function(object):
 
     __repr__ = __str__
 
+    def tEquals(self, f):
+        if not isinstance(f, Function): return False
+        if self.cardinality != f.cardinality: return False
+        if not all(t1==t2 for t1, t2 in izip(self.types, f.types)): return False
+        if len(self.generics) != len(f.generics): return False
+        if len(set(self.generics) ^ set(f.generics)) > 0: return False
+        if self.ret != f.ret: return False
+        return True
+
+
+
 def F0(ret):
     return partial(Function, (), ret)
 
@@ -130,3 +141,15 @@ def Func(*types):
     assert len(types) > 0
     return partial(Function, tuple(types[:-1]), types[-1])
 
+def is_polymorphic(v, on_types=None):
+    """
+    Tests if a function is polymorphic.  If `on_types` is provided, checks
+    to see if a function is generic on the set of provided types.
+    """
+    if isinstance(v, Function) and v.polymorphic:
+        if on_types is not None:
+            gens = set(on_types)
+            return len(gens.intersection(v.generics)) > 0
+        else:
+            return True
+    return False
