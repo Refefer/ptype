@@ -1,30 +1,63 @@
 from functools import partial
 from itertools import izip
 
-from generics import GenericType, is_generic
+from generics import GenericType, is_generic, ImpT
+
+def split_implicits(types):
+    cTypes = []
+    imps = []
+    for t in types:
+        (cTypes if isinstance(t, type) else imps).append(t)
+
+    return cTypes, imps
+
+def resolve_generics(types, ret):
+    generics = set() 
+    for ts in (types, (ret,)):
+        for t in ts:
+            if not is_generic(t): continue
+
+            if isinstance(t, ImpT):
+                generics.update(t.get_generics())
+            else:
+                generics.add(t)
+
+    return list(generics)
 
 class Function(object):
 
     def __init__(self, types, ret, f, allow_splats=False):
         assert isinstance(types, tuple)
-        assert all(isinstance(t, type) for t in types)
+        assert all(isinstance(t, (ImpT, type)) for t in types)
         assert isinstance(ret, type)
         if not allow_splats:
             assert f.func_code.co_argcount == len(types)
 
+        # Total types
         self.types = types 
-        self.generics = list({t for ts in (types, (ret,)) 
-            for t in ts if is_generic(t)})
+
+        # Concrete, passed in types
+        self.cTypes, self.implicits = split_implicits(types)
+
+        self.generics = resolve_generics(types, ret)
 
         self.polymorphic = len(self.generics) > 0
         self.cardinality = len(types)
         self.ret = ret
         self.f = f
 
+    def _resolveArgs(self, args):
+        new_args = []
+        it = iter(args)
+        for t in self.types:
+            new_args.append(t.get() if isinstance(t, ImpT) else next(it))
+
+        return tuple(new_args)
+
     def __call__(self, *args):
 
         if __debug__:
-            assert len(args) == self.cardinality
+            assert len(args) == self.cardinality - len(self.implicits)
 
         # Generic?  Gotta build a fully formed function
         if self.polymorphic:
@@ -37,7 +70,8 @@ class Function(object):
                         self.f.__name__, t.__name__, type(p).__name__
                     )
 
-        ret = self.f(*args)
+        r_args = self._resolveArgs(args)
+        ret = self.f(*r_args)
         if __debug__:
             assert isinstance(ret, self.ret), \
                 "%s: Expected %s, got %s" % (
@@ -55,7 +89,8 @@ class Function(object):
         return Function(tuple(self.types[1:]), self.ret, f, allow_splats=True)
 
     def _callGeneric(self, args):
-        gs = [type(t) for T, t in izip(self.types, args) if is_generic(T)]
+        gs = [type(t) for T, t in izip(self.cTypes, args) 
+                if is_generic(T)]
         new_f = self[tuple(gs)]
         # Return type _must_ be known at call time
         assert not is_generic(new_f.ret)
@@ -69,7 +104,11 @@ class Function(object):
         assert len(self.generics) == len(ts)
 
         gen_map = {g: t for g, t in izip(self.generics, ts)}
-        new_types = [gen_map.get(t, t) for t in self.types]
+        new_types = []
+        for t in self.types:
+            new_t = t.resolve(gen_map) \
+                if isinstance(t, ImpT) else gen_map.get(t, t)
+            new_types.append(new_t)
         
         # Resolve return type, if we can
         ret = gen_map[self.ret] if is_generic(self.ret) else self.ret

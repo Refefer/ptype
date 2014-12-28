@@ -2,7 +2,7 @@ from itertools import izip
 from generics import is_generic
 from function import Function, is_polymorphic
 
-gen_name = lambda cls, ts: '%s[%s]' % (cls.__name__, [t.__name__ for t in ts])
+gen_name = lambda cls, ts: '%s[%s]' % (cls.__name__, ','.join([t.__name__ for t in ts]))
 
 TRAIT_T_CACHE = {}
 
