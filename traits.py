@@ -1,4 +1,5 @@
-from itertools import izip
+
+from compat import izip
 from generics import is_generic
 from function import Function, is_polymorphic
 
@@ -100,6 +101,7 @@ class TraitImplT(TraitAbsT):
                     vi = iface[k]
                     r_gens = [ts.get(t, t) for t in vi.generics]
                     assert v.tEquals(vi[tuple(r_gens)])
+
             elif __debug__ and k in iface:
                 raise AssertionError("Cannot change type from %s to %s" % (
                     iface[k], v))

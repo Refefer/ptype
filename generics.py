@@ -1,4 +1,3 @@
-from itertools import izip
 
 class GenericType(type): pass
     

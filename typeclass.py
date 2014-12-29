@@ -50,7 +50,12 @@ class TCGenResolver(ImpT):
         return (self.type_var,)
 
     def resolve(self, type_map):
-        t = self.base[type_map[self.type_var]]
+        c_type = type_map[self.type_var]
+        if is_generic(c_type):
+            # Bah
+            return TCGenResolver(self.base, c_type, self.name)
+
+        t = self.base[c_type]
         return TCImpResolver(implicitly[t], t.__name__)
 
     def get(self):

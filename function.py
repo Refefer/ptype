@@ -1,5 +1,5 @@
 from functools import partial
-from itertools import izip
+from compat import izip
 
 from generics import GenericType, is_generic, ImpT
 
